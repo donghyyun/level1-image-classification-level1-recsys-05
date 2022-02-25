@@ -1,6 +1,9 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 
 class BaseModel(nn.Module):
@@ -51,3 +54,18 @@ class MyModel(nn.Module):
         2. 결과로 나온 output 을 return 해주세요
         """
         return x
+
+
+class ResNet18(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self.model = models.resnet18(pretrained=True)
+        self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
+        
+        # weight initialization
+        torch.nn.init.xavier_uniform_(self.model.fc.weight)
+        stdv = 1.0 / math.sqrt(self.model.fc.in_features)
+        self.model.fc.bias.data.uniform_(-stdv, stdv)
+    
+    def forward(self, x):
+        return self.model(x)

@@ -17,6 +17,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset
 from loss import create_criterion
+from evaluation import eval_valid_dataset
 
 
 def seed_everything(seed):
@@ -196,14 +197,18 @@ def train(data_dir, model_dir, args):
             model.eval()
             val_loss_items = []
             val_acc_items = []
+            val_preds_items = []
+            val_labels_items = []
             figure = None
             for val_batch in val_loader:
                 inputs, labels = val_batch
+                val_labels_items.extend(labels.numpy())
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
                 outs = model(inputs)
                 preds = torch.argmax(outs, dim=-1)
+                val_preds_items.extend(preds.cpu().numpy())
 
                 loss_item = criterion(outs, labels).item()
                 acc_item = (labels == preds).sum().item()
@@ -216,9 +221,10 @@ def train(data_dir, model_dir, args):
                     figure = grid_image(
                         inputs_np, labels, preds, n=16, shuffle=args.dataset != "MaskSplitByProfileDataset"
                     )
-
+            
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
+            val_f1 = eval_valid_dataset(val_labels_items, val_preds_items)
             best_val_loss = min(best_val_loss, val_loss)
             if val_acc > best_val_acc:
                 print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
@@ -226,11 +232,12 @@ def train(data_dir, model_dir, args):
                 best_val_acc = val_acc
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
-                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2} || "
+                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2}, f1: {val_f1:4.2} || "
                 f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}"
             )
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
+            logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
             print()
 

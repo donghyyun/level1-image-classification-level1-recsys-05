@@ -76,17 +76,19 @@ class MaskLabels(int, Enum):
 class GenderLabels(int, Enum):
     MALE = 0
     FEMALE = 1
-    Neutral = 2 ## 마스크를 쓴 상태의 여성을 모두 중성으로 돌린다.
+    Neutral = 2  ## 마스크를 쓴 상태의 여성을 모두 중성으로 돌린다.
 
     @classmethod
-    def from_str(cls, value: str) -> int:
-        value = value.lower()
-        if value == "male":
+    def from_str(cls, value1: str, value2: int) -> int:
+        value1 = value1.lower()
+        if value1 == "male":
             return cls.MALE
-        elif value == "female":
+        elif value1 == "female" and value2 == 0: ## 여성이면서 마스크 쓴 사람에게 중성 표시
+            return cls.Neutral
+        elif value1 == "female":
             return cls.FEMALE
         else:
-            raise ValueError(f"Gender value should be either 'male' or 'female', {value}")
+            raise ValueError(f"Gender value should be either 'male' or 'female', {value1}")
 
 
 class AgeLabels(int, Enum):
@@ -110,7 +112,7 @@ class AgeLabels(int, Enum):
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 2 * 3
+    num_classes = 3 * 3 * 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,
@@ -154,7 +156,7 @@ class MaskBaseDataset(Dataset):
                 mask_label = self._file_names[_file_name]
 
                 id, gender, race, age = profile.split("_")
-                gender_label = GenderLabels.from_str(gender)
+                gender_label = GenderLabels.from_str(gender, mask_label)  # 성별결정에 마스크 라벨도 넣읍시다
                 age_label = AgeLabels.from_number(age)
 
                 self.image_paths.append(img_path)
@@ -217,13 +219,16 @@ class MaskBaseDataset(Dataset):
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 6 + gender_label * 3 + age_label
+        return mask_label * 9 + gender_label * 4 + age_label # 원래는, 6, 3, 0
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
-        mask_label = (multi_class_label // 6) % 3
-        gender_label = (multi_class_label // 3) % 2
-        age_label = multi_class_label % 3
+        # mask_label = (multi_class_label // 6) % 3
+        # gender_label = (multi_class_label // 3) % 2
+        # age_label = multi_class_label % 3
+        mask_label = multi_class_label // 9
+        gender_label = (multi_class_label % 9) // 3
+        age_label = (multi_class_label % 9) % 3
         return mask_label, gender_label, age_label
 
     @staticmethod
@@ -291,7 +296,7 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
                     mask_label = self._file_names[_file_name]
 
                     id, gender, race, age = profile.split("_")
-                    gender_label = GenderLabels.from_str(gender)
+                    gender_label = GenderLabels.from_str(gender, mask_label) ## 젠더라벨에 마스크 라벨도 추가하자
                     age_label = AgeLabels.from_number(age)
 
                     self.image_paths.append(img_path)

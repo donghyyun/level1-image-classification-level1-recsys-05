@@ -62,14 +62,14 @@ def inference(data_dir, model_dir, output_dir, args):
             preds.extend(pred.cpu().numpy())
 
     info['ans'] = preds
-    info.to_csv(os.path.join(output_dir, f'efficient2.csv'), index=False)
+    info.to_csv(os.path.join(output_dir, f'neutral.csv'), index=False)
     print(f'Inference Done!')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    # Data and model checkpoints directories
+    # Data and model checkpoints directoriesl
     parser.add_argument('--batch_size', type=int, default=1000, help='input batch size for validing (default: 1000)')
     parser.add_argument('--resize', type=tuple, default=(512, 384), help='resize size for image when you trained (default: (96, 128))')
     parser.add_argument('--model', type=str, default='BaseModel', help='model type (default: BaseModel)')

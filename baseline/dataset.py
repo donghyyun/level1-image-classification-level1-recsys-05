@@ -202,7 +202,7 @@ class MaskBaseDataset(Dataset):
                 indices]
 
     def get_mask_label(self, index) -> MaskLabels:
-        return self.mask_labels[index]
+        return self.mask_labels[index]햣
 
     def get_gender_label(self, index) -> GenderLabels:
         return self.gender_labels[index]
@@ -219,7 +219,7 @@ class MaskBaseDataset(Dataset):
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 9 + gender_label * 4 + age_label # 원래는, 6, 3, 0
+        return mask_label * 9 + gender_label * 3 + age_label # 원래는, 6, 3, 0
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:

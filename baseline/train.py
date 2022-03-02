@@ -99,6 +99,7 @@ def train(data_dir, model_dir, args):
     dataset_module = getattr(import_module("dataset"), args.dataset)  # default: BaseAugmentation
     dataset = dataset_module(
         data_dir=data_dir,
+        val_ratio=args.val_ratio
     )
     num_classes = dataset.num_classes  # 18
 

@@ -76,6 +76,7 @@ class MaskLabels(int, Enum):
 class GenderLabels(int, Enum):
     MALE = 0
     FEMALE = 1
+    Neutral = 2 ## 마스크를 쓴 상태의 여성을 모두 중성으로 돌린다.
 
     @classmethod
     def from_str(cls, value: str) -> int:

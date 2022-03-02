@@ -5,11 +5,17 @@ import re
 
 
 def trans_ans_num(x):
-    mask_label = x // 9
-    gender_label = (x % 9) // 3
-    age_label = (x % 9) % 3
+    mask_label = x // 12
+    gender_label = (x % 12) // 3
+    age_label = (x % 12) % 3
 
-    return mask_label * 6 + (gender_label - 1) * 3 + age_label if gender_label == 2 else mask_label * 6 + gender_label * 3 + age_label
+    if mask_label >= 2:
+        return mask_label * 6 + (gender_label - 2) * 3 + age_label
+    else:
+        mask_label * 6 + gender_label * 3 + age_label
+
+
+    # return mask_label * 6 + (gender_label - 1) * 3 + age_label if gender_label == 2 else mask_label * 6 + gender_label * 3 + age_label
 
 if __name__ == '__main__':  ## 안건드려도 되는 곳
     parser = argparse.ArgumentParser()

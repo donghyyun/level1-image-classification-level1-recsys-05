@@ -62,7 +62,7 @@ def inference(data_dir, model_dir, output_dir, args):
             preds.extend(pred.cpu().numpy())
 
     info['ans'] = preds
-    info.to_csv(os.path.join(output_dir, f'neutral.csv'), index=False)
+    info.to_csv(os.path.join(output_dir, f'4gender.csv'), index=False)
     print(f'Inference Done!')
 
 

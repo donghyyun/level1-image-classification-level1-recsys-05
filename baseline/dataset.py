@@ -76,15 +76,18 @@ class MaskLabels(int, Enum):
 class GenderLabels(int, Enum):
     MALE = 0
     FEMALE = 1
-    Neutral = 2  ## 마스크를 쓴 상태의 여성을 모두 중성으로 돌린다.
+    Neutral1 = 2  ## 마스크를 쓴 상태의 성별을 모두 중성으로 돌린다.
+    Neutral2 = 3
 
     @classmethod
     def from_str(cls, value1: str, value2: int) -> int:
         value1 = value1.lower()
-        if value1 == "male":
+        if value1 == "male" and value2 == 0: ## 남성이면서 마스크 쓴 사람에게 중성 표시
+            return cls.Neutral1
+        elif value1 == "male":
             return cls.MALE
         elif value1 == "female" and value2 == 0: ## 여성이면서 마스크 쓴 사람에게 중성 표시
-            return cls.Neutral
+            return cls.Neutral2
         elif value1 == "female":
             return cls.FEMALE
         else:
@@ -112,7 +115,7 @@ class AgeLabels(int, Enum):
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 3 * 3
+    num_classes = 3 * 4 * 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,
@@ -202,7 +205,7 @@ class MaskBaseDataset(Dataset):
                 indices]
 
     def get_mask_label(self, index) -> MaskLabels:
-        return self.mask_labels[index]햣
+        return self.mask_labels[index]
 
     def get_gender_label(self, index) -> GenderLabels:
         return self.gender_labels[index]
@@ -219,16 +222,16 @@ class MaskBaseDataset(Dataset):
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 9 + gender_label * 3 + age_label # 원래는, 6, 3, 0
+        return mask_label * 12 + gender_label * 3 + age_label # 원래는, 6, 3, 0
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
         # mask_label = (multi_class_label // 6) % 3
         # gender_label = (multi_class_label // 3) % 2
         # age_label = multi_class_label % 3
-        mask_label = multi_class_label // 9
-        gender_label = (multi_class_label % 9) // 3
-        age_label = (multi_class_label % 9) % 3
+        mask_label = multi_class_label // 12
+        gender_label = (multi_class_label % 12) // 3
+        age_label = (multi_class_label % 12) % 3
         return mask_label, gender_label, age_label
 
     @staticmethod

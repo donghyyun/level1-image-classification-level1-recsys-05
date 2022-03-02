@@ -7,9 +7,14 @@ from typing import Tuple, List
 import numpy as np
 import torch
 from PIL import Image
+import cv2
 from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
+import albumentations
+import albumentations.pytorch
 from torchvision.transforms import *
+
+from evaluation import eval_valid_dataset
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -22,12 +27,20 @@ def is_image_file(filename):
 
 
 class BaseAugmentation:
-    def __init__(self, resize, mean, std, **args):
+    def __init__(self, mean, std, resize=None, **args):
         self.transform = transforms.Compose([
+            # CenterCrop((320, 256)),
             Resize(resize, Image.BILINEAR),
             ToTensor(),
             Normalize(mean=mean, std=std),
         ])
+
+        # self.transform = albumentations.Compose([
+        #     albumentations.Resize(resize, Image.BILINEAR),
+        #     albumentations.pytorch.transforms.ToTensorV2(),
+        #     Normalize(mean=mean, std=std),
+        #     AddGaussianNoise()
+        # ])
 
     def __call__(self, image):
         return self.transform(image)
@@ -51,7 +64,7 @@ class AddGaussianNoise(object):
 
 
 class CustomAugmentation:
-    def __init__(self, resize, mean, std, **args):
+    def __init__(self, mean, std, resize=None, **args):
         self.transform = transforms.Compose([
             CenterCrop((320, 256)),
             Resize(resize, Image.BILINEAR),
@@ -60,6 +73,26 @@ class CustomAugmentation:
             Normalize(mean=mean, std=std),
             AddGaussianNoise()
         ])
+
+        # self.transform = albumentations.Compose([
+        #     albumentations.Resize(resize, Image.BILINEAR),
+        #     albumentations.ColorJitter(0.1, 0.1, 0.1, 0.1),
+        #     albumentations.pytorch.transforms.ToTensorV2(),
+        #     Normalize(mean=mean, std=std),
+        #     AddGaussianNoise()
+        # ])
+
+        self.transform = albumentations.Compose(
+        [
+            albumentations.Resize(512, 384, cv2.INTER_LINEAR),
+            albumentations.GaussianBlur(3, sigma_limit=(0.1, 2)),
+            albumentations.Normalize(mean=args.normalize_mean, std=args.normalize_std),
+            albumentations.HorizontalFlip(
+                p=0.5
+            ),  # Same with transforms.RandomHorizontalFlip()
+            albumentations.pytorch.transforms.ToTensorV2(),
+        ]
+    )
 
     def __call__(self, image):
         return self.transform(image)
@@ -88,8 +121,9 @@ class GenderLabels(int, Enum):
 
 class AgeLabels(int, Enum):
     YOUNG = 0
-    MIDDLE = 1
-    OLD = 2
+    MIDDLE_1 = 1
+    MIDDLE_2 = 2
+    OLD = 3
 
     @classmethod
     def from_number(cls, value: str) -> int:
@@ -98,16 +132,18 @@ class AgeLabels(int, Enum):
         except Exception:
             raise ValueError(f"Age value should be numeric, {value}")
 
-        if value < 30:
+        if value < 25:
             return cls.YOUNG
-        elif value < 60:
-            return cls.MIDDLE
+        elif value < 40:
+            return cls.MIDDLE_1
+        elif value < 56:
+            return cls.MIDDLE_2
         else:
             return cls.OLD
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 2 * 3
+    num_classes = 4 * 2 * 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,
@@ -123,6 +159,7 @@ class MaskBaseDataset(Dataset):
     mask_labels = []
     gender_labels = []
     age_labels = []
+    multi_class_labels = []
 
     def __init__(self, data_dir, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246), val_ratio=0.2):
         self.data_dir = data_dir
@@ -157,6 +194,7 @@ class MaskBaseDataset(Dataset):
                 self.mask_labels.append(mask_label)
                 self.gender_labels.append(gender_label)
                 self.age_labels.append(age_label)
+                
 
     def calc_statistics(self):
         has_statistics = self.mean is not None and self.std is not None
@@ -190,6 +228,9 @@ class MaskBaseDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
+    def get_labels(self):
+        return 
+
     def get_mask_label(self, index) -> MaskLabels:
         return self.mask_labels[index]
 
@@ -201,17 +242,19 @@ class MaskBaseDataset(Dataset):
 
     def read_image(self, index):
         image_path = self.image_paths[index]
+        image = cv2.imread(image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         return Image.open(image_path)
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 6 + gender_label * 3 + age_label
+        return mask_label * 8 + gender_label * 4 + age_label
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
-        mask_label = (multi_class_label // 6) % 3
-        gender_label = (multi_class_label // 3) % 2
-        age_label = multi_class_label % 3
+        mask_label = (multi_class_label // 8) % 3
+        gender_label = (multi_class_label // 4) % 2
+        age_label = multi_class_label % 4
         return mask_label, gender_label, age_label
 
     @staticmethod
@@ -292,6 +335,7 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
 
     def split_dataset(self) -> List[Subset]:
         return [Subset(self, indices) for phase, indices in self.indices.items()]
+    
 
 
 class TestDataset(Dataset):

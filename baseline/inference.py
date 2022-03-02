@@ -57,6 +57,7 @@ def inference(data_dir, model_dir, output_dir, args):
         for idx, images in enumerate(loader):
             images = images.to(device)
             pred = model(images)
+            print(pred)
             pred = pred.argmax(dim=-1)
             preds.extend(pred.cpu().numpy())
 
@@ -76,6 +77,7 @@ if __name__ == '__main__':
     # Container environment
     parser.add_argument('--data_dir', type=str, default=os.environ.get('SM_CHANNEL_EVAL', '/opt/ml/input/data/eval'))
     parser.add_argument('--model_dir', type=str, default=os.environ.get('SM_CHANNEL_MODEL', './model'))
+    # /workspace/level1-image-classification-level1-recsys-05/baseline/model/exp?  로 best.pth 넘기기
     parser.add_argument('--output_dir', type=str, default=os.environ.get('SM_OUTPUT_DATA_DIR', './output'))
 
     args = parser.parse_args()

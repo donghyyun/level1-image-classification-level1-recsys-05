@@ -2,14 +2,16 @@ import os
 import random
 from collections import defaultdict
 from enum import Enum
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, Subset, random_split
 from torchvision import transforms
 from torchvision.transforms import *
+
 
 IMG_EXTENSIONS = [
     ".jpg", ".JPG", ".jpeg", ".JPEG", ".png",
@@ -53,7 +55,7 @@ class AddGaussianNoise(object):
 class CustomAugmentation:
     def __init__(self, resize, mean, std, **args):
         self.transform = transforms.Compose([
-            CenterCrop((320, 256)),
+            # CenterCrop((320, 256)),
             Resize(resize, Image.BILINEAR),
             ColorJitter(0.1, 0.1, 0.1, 0.1),
             ToTensor(),
@@ -134,6 +136,7 @@ class MaskBaseDataset(Dataset):
         self.setup()
         self.calc_statistics()
 
+
     def setup(self):
         profiles = os.listdir(self.data_dir)
         for profile in profiles:
@@ -185,10 +188,15 @@ class MaskBaseDataset(Dataset):
         multi_class_label = self.encode_multi_class(mask_label, gender_label, age_label)
 
         image_transform = self.transform(image)
+
         return image_transform, multi_class_label
 
     def __len__(self):
         return len(self.image_paths)
+
+    def _get_labels_of(self, indices):
+        return [self.encode_multi_class(self.mask_labels[i], self.gender_labels[i], self.age_labels[i]) for i in
+                indices]
 
     def get_mask_label(self, index) -> MaskLabels:
         return self.mask_labels[index]
@@ -202,6 +210,9 @@ class MaskBaseDataset(Dataset):
     def read_image(self, index):
         image_path = self.image_paths[index]
         return Image.open(image_path)
+
+    def get_labels(self, dataset):
+        return dataset.dataset.mask_labels
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
@@ -312,3 +323,37 @@ class TestDataset(Dataset):
 
     def __len__(self):
         return len(self.img_paths)
+
+
+class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
+    """Samples elements randomly from a given list of indices for imbalanced dataset
+    Arguments:
+        indices: a list of indices
+        num_samples: number of samples to draw
+        callback_get_label: a callback-like function which takes two arguments - dataset and index
+    """
+
+    def __init__(self, dataset: Subset, indices: list = None, num_samples: int = None, callback_get_label: Callable = None):
+        # if indices is not provided, all elements in the dataset will be considered
+        self.indices = list(range(len(dataset))) if indices is None else indices
+
+        # if num_samples is not provided, draw `len(indices)` samples in each iteration
+        self.num_samples = len(self.indices) if num_samples is None else num_samples
+
+        # distribution of classes in the dataset
+        df = pd.DataFrame()
+        df["label"] = dataset.dataset._get_labels_of(dataset.indices)
+        df.index = self.indices
+        df = df.sort_index()
+
+        label_to_count = df["label"].value_counts()
+
+        weights = 1.0 / label_to_count[df["label"]]
+
+        self.weights = torch.DoubleTensor(weights.to_list())
+
+    def __iter__(self):
+        return (self.indices[i] for i in torch.multinomial(self.weights, self.num_samples, replacement=True))
+
+    def __len__(self):
+        return self.num_samples

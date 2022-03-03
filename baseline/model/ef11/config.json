@@ -1,0 +1,22 @@
+{
+    "seed": 42,
+    "epochs": 20,
+    "dataset": "MaskSplitByProfileDataset",
+    "augmentation": "BaseAugmentation",
+    "resize": [
+        512,
+        384
+    ],
+    "batch_size": 32,
+    "valid_batch_size": 100,
+    "model": "EfficientNet",
+    "optimizer": "Adam",
+    "lr": 0.0001,
+    "val_ratio": 0.2,
+    "criterion": "cross_entropy",
+    "lr_decay_step": 10,
+    "log_interval": 20,
+    "name": "ef",
+    "data_dir": "/opt/ml/input/data/train/images",
+    "model_dir": "./model"
+}

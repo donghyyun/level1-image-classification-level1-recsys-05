@@ -4,9 +4,13 @@ import json
 import multiprocessing
 import os
 import random
+import platform
+import torchvision
 import re
+import os
 from importlib import import_module
 from pathlib import Path
+import torch.nn as nn
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -94,7 +98,12 @@ def train(data_dir, model_dir, args):
     use_cuda = torch.cuda.is_available()
     print(f'use-cuda: {use_cuda}')
     device = torch.device("cuda" if use_cuda else "cpu")
-
+    current_os = platform.system()
+    print(f"Current OS: {current_os}")
+    print(f"CUDA: {torch.cuda.is_available()}")
+    print(f"Python Version: {platform.python_version()}")
+    print(f"torch Version: {torch.__version__}")
+    print(f"torchvision Version: {torchvision.__version__}")
     # -- dataset
     dataset_module = getattr(import_module("dataset"), args.dataset)  # default: BaseAugmentation
     dataset = dataset_module(
@@ -143,7 +152,15 @@ def train(data_dir, model_dir, args):
     model = torch.nn.DataParallel(model)
 
     # -- loss & metric
-    criterion = create_criterion(args.criterion)  # default: cross_entropy
+    # criterion = create_criterion(args.criterion)  # default: cross_entropy
+    print("using weighted crossentropyloss")
+
+    nSamples = [2745, 2050, 415, 3660, 4085, 545, 549, 410, 83, 732, 817, 109, 549, 410, 83, 732, 817, 109]
+    normedWeights = [1 - (x / sum(nSamples)) for x in nSamples]
+    normedWeights = torch.FloatTensor(normedWeights).to(device)
+
+    criterion = nn.CrossEntropyLoss(weight=normedWeights) # <--클래스 weight 넣자
+
     opt_module = getattr(import_module("torch.optim"), args.optimizer)  # default: SGD
     optimizer = opt_module(
         filter(lambda p: p.requires_grad, model.parameters()),
@@ -252,7 +269,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 42)')
     parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 1)')
     parser.add_argument('--dataset', type=str, default='MaskBaseDataset', help='dataset augmentation type (default: MaskBaseDataset)')
-    parser.add_argument('--augmentation', type=str, default='BaseAugmentation', help='data augmentation type (default: BaseAugmentation)')
+    parser.add_argument('--augmentation', type=str, default='CustomAugmentation', help='data augmentation type (default: BaseAugmentation)')
     parser.add_argument("--resize", nargs="+", type=list, default=[512, 384], help='resize size for image when training') # 128, 96
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
     parser.add_argument('--valid_batch_size', type=int, default=1000, help='input batch size for validing (default: 1000)')
@@ -273,6 +290,7 @@ if __name__ == '__main__':
     print(args)
 
     data_dir = args.data_dir
+
     model_dir = args.model_dir
 
     train(data_dir, model_dir, args)

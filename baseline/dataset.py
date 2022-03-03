@@ -57,10 +57,14 @@ class CustomAugmentation:
         self.transform = transforms.Compose([
             # CenterCrop((320, 256)),
             Resize(resize, Image.BILINEAR),
-            ColorJitter(0.1, 0.1, 0.1, 0.1),
+            # transforms.Resize((256, 256)),
+            # transforms.RandomCrop(244),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(degrees=(0, 360)),
+            transforms.RandomPerspective(),
             ToTensor(),
             Normalize(mean=mean, std=std),
-            AddGaussianNoise()
         ])
 
     def __call__(self, image):
@@ -222,16 +226,16 @@ class MaskBaseDataset(Dataset):
 
     @staticmethod
     def encode_multi_class(mask_label, gender_label, age_label) -> int:
-        return mask_label * 12 + gender_label * 3 + age_label # 원래는, 6, 3, 0
+        return mask_label * 6 + gender_label * 3 + age_label # 원래는, 6, 3, 0
 
     @staticmethod
     def decode_multi_class(multi_class_label) -> Tuple[MaskLabels, GenderLabels, AgeLabels]:
-        # mask_label = (multi_class_label // 6) % 3
-        # gender_label = (multi_class_label // 3) % 2
-        # age_label = multi_class_label % 3
-        mask_label = multi_class_label // 12
-        gender_label = (multi_class_label % 12) // 3
-        age_label = (multi_class_label % 12) % 3
+        mask_label = (multi_class_label // 6) % 3
+        gender_label = (multi_class_label // 3) % 2
+        age_label = multi_class_label % 3
+        # mask_label = multi_class_label // 12
+        # gender_label = (multi_class_label % 12) // 3
+        # age_label = (multi_class_label % 12) % 3
         return mask_label, gender_label, age_label
 
     @staticmethod

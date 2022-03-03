@@ -82,12 +82,12 @@ class GenderLabels(int, Enum):
     @classmethod
     def from_str(cls, value1: str, value2: int) -> int:
         value1 = value1.lower()
-        if value1 == "male" and value2 == 0: ## 남성이면서 마스크 쓴 사람에게 중성 표시
-            return cls.Neutral1
-        elif value1 == "male":
+        # if value1 == "male" and value2 == 0: ## 남성이면서 마스크 쓴 사람에게 중성 표시
+        #     return cls.Neutral1
+        if value1 == "male":
             return cls.MALE
-        elif value1 == "female" and value2 == 0: ## 여성이면서 마스크 쓴 사람에게 중성 표시
-            return cls.Neutral2
+        # elif value1 == "female" and value2 == 0: ## 여성이면서 마스크 쓴 사람에게 중성 표시
+        #     return cls.Neutral2
         elif value1 == "female":
             return cls.FEMALE
         else:
@@ -108,14 +108,14 @@ class AgeLabels(int, Enum):
 
         if value < 30:
             return cls.YOUNG
-        elif value < 60:
+        elif value < 59:
             return cls.MIDDLE
         else:
             return cls.OLD
 
 
 class MaskBaseDataset(Dataset):
-    num_classes = 3 * 4 * 3
+    num_classes = 3 * 2 * 3
 
     _file_names = {
         "mask1": MaskLabels.MASK,

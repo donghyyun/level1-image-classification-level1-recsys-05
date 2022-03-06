@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 
 from dataset import MaskBaseDataset, ImbalancedDatasetSampler
@@ -42,7 +42,7 @@ def grid_image(np_images, gts, preds, n=16, shuffle=False):
     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
     figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
-    n_grid = np.ceil(n ** 0.5)
+    n_grid = int(np.ceil(n ** 0.5))
     tasks = ["mask", "gender", "age"]
     for idx, choice in enumerate(choices):
         gt = gts[choice].item()
@@ -97,6 +97,7 @@ def train(data_dir, model_dir, args):
     dataset_module = getattr(import_module("dataset"), args.dataset)  # default: BaseAugmentation
     dataset = dataset_module(
         data_dir=data_dir,
+        val_ratio=args.val_ratio
     )
     num_classes = dataset.num_classes  # 18
 
@@ -111,17 +112,31 @@ def train(data_dir, model_dir, args):
 
     # -- data_loader
     train_set, val_set = dataset.split_dataset()
+    pseudo_set_module = getattr(import_module("dataset"), "PseudoLabelingDataset")
+    pseudo_set = pseudo_set_module(
+        df_path="./output/ensemble/efficientNet_age_adjust_best_weightLoss_focal_tta_horz/output.csv",
+        resize=args.resize
+    )
 
     train_loader = DataLoader(
-        train_set,
+        ConcatDataset([train_set, pseudo_set]),
         batch_size=args.batch_size,
         num_workers=multiprocessing.cpu_count()//2,
         # sampler = ImbalancedDatasetSampler(train_set), # sampler를 사용할 때는 shuffle 옵션을 False로 줘야합니다!
         # shuffle=False,
-        shuffle=False,
+        shuffle=True,
         pin_memory=use_cuda,
         drop_last=True,
     )
+
+    # val_loader = DataLoader(
+    #     train_set,
+    #     batch_size=args.valid_batch_size,
+    #     # num_workers=multiprocessing.cpu_count()//2,
+    #     shuffle=False,
+    #     pin_memory=use_cuda,
+    #     drop_last=False,
+    # )
 
     val_loader = DataLoader(
         val_set,

@@ -318,6 +318,29 @@ class TestDataset(Dataset):
         return len(self.img_paths)
 
 
+class PseudoLabelingDataset(Dataset):
+    def __init__(self, df_path, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
+        self.test_dir = '/opt/ml/input/data/eval/images'
+        self.df = pd.read_csv(df_path)
+        self.transform = transforms.Compose([
+            Resize(resize, Image.BILINEAR),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+        self.img_paths = [os.path.join(self.test_dir, path) for path in self.df.ImageID.values]
+        self.labels = self.df.ans.values
+    
+    def __getitem__(self, index):
+        image = Image.open(self.img_paths[index])
+
+        if self.transform:
+            image = self.transform(image)
+        return image, self.labels[index]
+    
+    def __len__(self):
+        return len(self.img_paths)
+
+
 class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
     """Samples elements randomly from a given list of indices for imbalanced dataset
     Arguments:

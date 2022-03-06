@@ -1,9 +1,11 @@
 import argparse
 import os
+import multiprocessing
 from importlib import import_module
 
 import pandas as pd
 import torch
+import ttach
 from torch.utils.data import DataLoader
 
 from dataset import TestDataset, MaskBaseDataset
@@ -36,6 +38,14 @@ def inference(data_dir, model_dir, output_dir, args):
     model = load_model(model_dir, num_classes, device).to(device)
     model.eval()
 
+    transforms = ttach.Compose(
+        [
+            ttach.HorizontalFlip(),
+            # ttach.VerticalFlip()
+        ]
+    )
+    tta_model = ttach.ClassificationTTAWrapper(model, transforms)
+
     img_root = os.path.join(data_dir, 'images')
     info_path = os.path.join(data_dir, 'info.csv')
     info = pd.read_csv(info_path)
@@ -45,7 +55,7 @@ def inference(data_dir, model_dir, output_dir, args):
     loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
-        num_workers=8,
+        num_workers=multiprocessing.cpu_count()//2,
         shuffle=False,
         pin_memory=use_cuda,
         drop_last=False,
@@ -56,7 +66,7 @@ def inference(data_dir, model_dir, output_dir, args):
     with torch.no_grad():
         for idx, images in enumerate(loader):
             images = images.to(device)
-            pred = model(images)
+            pred = tta_model(images)
             pred = pred.argmax(dim=-1)
             preds.extend(pred.cpu().numpy())
 

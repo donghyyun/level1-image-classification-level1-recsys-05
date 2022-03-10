@@ -12,11 +12,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 
-from dataset import MaskBaseDataset
+from dataset import MaskBaseDataset, ImbalancedDatasetSampler
 from loss import create_criterion
+from evaluation import eval_valid_dataset
 
 
 def seed_everything(seed):
@@ -41,7 +42,7 @@ def grid_image(np_images, gts, preds, n=16, shuffle=False):
     choices = random.choices(range(batch_size), k=n) if shuffle else list(range(n))
     figure = plt.figure(figsize=(12, 18 + 2))  # cautions: hardcoded, 이미지 크기에 따라 figsize 를 조정해야 할 수 있습니다. T.T
     plt.subplots_adjust(top=0.8)               # cautions: hardcoded, 이미지 크기에 따라 top 를 조정해야 할 수 있습니다. T.T
-    n_grid = np.ceil(n ** 0.5)
+    n_grid = int(np.ceil(n ** 0.5))
     tasks = ["mask", "gender", "age"]
     for idx, choice in enumerate(choices):
         gt = gts[choice].item()
@@ -96,6 +97,7 @@ def train(data_dir, model_dir, args):
     dataset_module = getattr(import_module("dataset"), args.dataset)  # default: BaseAugmentation
     dataset = dataset_module(
         data_dir=data_dir,
+        val_ratio=args.val_ratio
     )
     num_classes = dataset.num_classes  # 18
 
@@ -110,15 +112,31 @@ def train(data_dir, model_dir, args):
 
     # -- data_loader
     train_set, val_set = dataset.split_dataset()
+    pseudo_set_module = getattr(import_module("dataset"), "PseudoLabelingDataset")
+    pseudo_set = pseudo_set_module(
+        df_path="./output/ensemble/efficientNet_age_adjust_best_weightLoss_focal_tta_horz/output.csv",
+        resize=args.resize
+    )
 
     train_loader = DataLoader(
-        train_set,
+        ConcatDataset([train_set, pseudo_set]),
         batch_size=args.batch_size,
         num_workers=multiprocessing.cpu_count()//2,
+        # sampler = ImbalancedDatasetSampler(train_set), # sampler를 사용할 때는 shuffle 옵션을 False로 줘야합니다!
+        # shuffle=False,
         shuffle=True,
         pin_memory=use_cuda,
         drop_last=True,
     )
+
+    # val_loader = DataLoader(
+    #     train_set,
+    #     batch_size=args.valid_batch_size,
+    #     # num_workers=multiprocessing.cpu_count()//2,
+    #     shuffle=False,
+    #     pin_memory=use_cuda,
+    #     drop_last=False,
+    # )
 
     val_loader = DataLoader(
         val_set,
@@ -126,7 +144,7 @@ def train(data_dir, model_dir, args):
         num_workers=multiprocessing.cpu_count()//2,
         shuffle=False,
         pin_memory=use_cuda,
-        drop_last=True,
+        drop_last=False,
     )
 
     # -- model
@@ -153,6 +171,7 @@ def train(data_dir, model_dir, args):
 
     best_val_acc = 0
     best_val_loss = np.inf
+    best_val_f1 = 0
     for epoch in range(args.epochs):
         # train loop
         model.train()
@@ -179,7 +198,7 @@ def train(data_dir, model_dir, args):
                 train_acc = matches / args.batch_size / args.log_interval
                 current_lr = get_lr(optimizer)
                 print(
-                    f"Epoch[{epoch}/{args.epochs}]({idx + 1}/{len(train_loader)}) || "
+                    f"Epoch[{epoch + 1}/{args.epochs}]({idx + 1}/{len(train_loader)}) || "
                     f"training loss {train_loss:4.4} || training accuracy {train_acc:4.2%} || lr {current_lr}"
                 )
                 logger.add_scalar("Train/loss", train_loss, epoch * len(train_loader) + idx)
@@ -196,14 +215,18 @@ def train(data_dir, model_dir, args):
             model.eval()
             val_loss_items = []
             val_acc_items = []
+            val_preds_items = []
+            val_labels_items = []
             figure = None
             for val_batch in val_loader:
                 inputs, labels = val_batch
+                val_labels_items.extend(labels.numpy())
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
                 outs = model(inputs)
                 preds = torch.argmax(outs, dim=-1)
+                val_preds_items.extend(preds.cpu().numpy())
 
                 loss_item = criterion(outs, labels).item()
                 acc_item = (labels == preds).sum().item()
@@ -216,21 +239,24 @@ def train(data_dir, model_dir, args):
                     figure = grid_image(
                         inputs_np, labels, preds, n=16, shuffle=args.dataset != "MaskSplitByProfileDataset"
                     )
-
+            
             val_loss = np.sum(val_loss_items) / len(val_loader)
             val_acc = np.sum(val_acc_items) / len(val_set)
+            val_f1 = eval_valid_dataset(val_labels_items, val_preds_items)
             best_val_loss = min(best_val_loss, val_loss)
-            if val_acc > best_val_acc:
-                print(f"New best model for val accuracy : {val_acc:4.2%}! saving the best model..")
+            best_val_acc = max(best_val_acc, val_acc)
+            if val_f1 > best_val_f1:
+                print(f"New best model for val f1 score : {val_f1:4.4}! saving the best model..")
                 torch.save(model.module.state_dict(), f"{save_dir}/best.pth")
-                best_val_acc = val_acc
+                best_val_f1 = val_f1
             torch.save(model.module.state_dict(), f"{save_dir}/last.pth")
             print(
-                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2} || "
-                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}"
+                f"[Val] acc : {val_acc:4.2%}, loss: {val_loss:4.2}, f1: {val_f1:4.4} || "
+                f"best acc : {best_val_acc:4.2%}, best loss: {best_val_loss:4.2}, best f1: {best_val_f1:4.4}"
             )
             logger.add_scalar("Val/loss", val_loss, epoch)
             logger.add_scalar("Val/accuracy", val_acc, epoch)
+            logger.add_scalar("Val/f1", val_f1, epoch)
             logger.add_figure("results", figure, epoch)
             print()
 
@@ -247,7 +273,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=1, help='number of epochs to train (default: 1)')
     parser.add_argument('--dataset', type=str, default='MaskBaseDataset', help='dataset augmentation type (default: MaskBaseDataset)')
     parser.add_argument('--augmentation', type=str, default='BaseAugmentation', help='data augmentation type (default: BaseAugmentation)')
-    parser.add_argument("--resize", nargs="+", type=list, default=[128, 96], help='resize size for image when training')
+    parser.add_argument("--resize", nargs="+", type=list, default=[512, 384], help='resize size for image when training')
     parser.add_argument('--batch_size', type=int, default=64, help='input batch size for training (default: 64)')
     parser.add_argument('--valid_batch_size', type=int, default=1000, help='input batch size for validing (default: 1000)')
     parser.add_argument('--model', type=str, default='BaseModel', help='model type (default: BaseModel)')

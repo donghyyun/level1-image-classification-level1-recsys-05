@@ -1,6 +1,9 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import models
 
 
 class BaseModel(nn.Module):
@@ -51,3 +54,48 @@ class MyModel(nn.Module):
         2. 결과로 나온 output 을 return 해주세요
         """
         return x
+
+
+class ResNet18(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self.model = models.resnet18(pretrained=True)
+        self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
+        
+        torch.nn.init.xavier_uniform_(self.model.fc.weight)
+        stdv = 1.0 / math.sqrt(self.model.fc.in_features)
+        self.model.fc.bias.data.uniform_(-stdv, stdv)
+    
+    def forward(self, x):
+        return self.model(x)
+
+
+class EfficientNet(nn.Module):
+    def __init__(self, num_classes):
+        super(EfficientNet, self).__init__()
+        self.model = torch.hub.load('NVIDIA/DeepLearningExamples:torchhub', 'nvidia_efficientnet_b0', pretrained=True)
+        self.model.classifier.fc = nn.Linear(self.model.classifier.fc.in_features, num_classes)
+
+        torch.nn.init.xavier_uniform_(self.model.classifier.fc.weight)
+        stdv = 1.0 / math.sqrt(self.model.classifier.fc.in_features)
+        self.model.classifier.fc.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class VGG16(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self.model = models.vgg16_bn(pretrained=True)
+        self.model.classifier = nn.Sequential(
+            nn.Linear(512*7*7,4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(4096,4096),
+            nn.ReLU(True),
+            nn.Dropout(),
+            nn.Linear(4096,num_classes)
+        )
+    def forwrad(self, x):
+        return self.model(x)

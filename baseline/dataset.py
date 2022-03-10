@@ -2,9 +2,10 @@ import os
 import random
 from collections import defaultdict
 from enum import Enum
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 
 import numpy as np
+import pandas as pd
 import torch
 from PIL import Image
 from torch.utils.data import Dataset, Subset, random_split
@@ -190,6 +191,9 @@ class MaskBaseDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
+    def _get_labels_of(self, indices):
+        return [self.encode_multi_class(self.mask_labels[i], self.gender_labels[i], self.age_labels[i]) for i in indices]
+
     def get_mask_label(self, index) -> MaskLabels:
         return self.mask_labels[index]
 
@@ -253,7 +257,7 @@ class MaskSplitByProfileDataset(MaskBaseDataset):
         length = len(profiles)
         n_val = int(length * val_ratio)
 
-        val_indices = set(random.choices(range(length), k=n_val))
+        val_indices = set(random.sample(range(length), k=n_val))
         train_indices = set(range(length)) - val_indices
         return {
             "train": train_indices,
@@ -312,3 +316,60 @@ class TestDataset(Dataset):
 
     def __len__(self):
         return len(self.img_paths)
+
+
+class PseudoLabelingDataset(Dataset):
+    def __init__(self, df_path, resize, mean=(0.548, 0.504, 0.479), std=(0.237, 0.247, 0.246)):
+        self.test_dir = '/opt/ml/input/data/eval/images'
+        self.df = pd.read_csv(df_path)
+        self.transform = transforms.Compose([
+            Resize(resize, Image.BILINEAR),
+            ToTensor(),
+            Normalize(mean=mean, std=std),
+        ])
+        self.img_paths = [os.path.join(self.test_dir, path) for path in self.df.ImageID.values]
+        self.labels = self.df.ans.values
+    
+    def __getitem__(self, index):
+        image = Image.open(self.img_paths[index])
+
+        if self.transform:
+            image = self.transform(image)
+        return image, self.labels[index]
+    
+    def __len__(self):
+        return len(self.img_paths)
+
+
+class ImbalancedDatasetSampler(torch.utils.data.sampler.Sampler):
+    """Samples elements randomly from a given list of indices for imbalanced dataset
+    Arguments:
+        indices: a list of indices
+        num_samples: number of samples to draw
+        callback_get_label: a callback-like function which takes two arguments - dataset and index
+    """
+
+    def __init__(self, dataset: Subset, indices: list = None, num_samples: int = None, callback_get_label: Callable = None):
+        # if indices is not provided, all elements in the dataset will be considered
+        self.indices = list(range(len(dataset))) if indices is None else indices
+
+        # if num_samples is not provided, draw `len(indices)` samples in each iteration
+        self.num_samples = len(self.indices) if num_samples is None else num_samples
+
+        # distribution of classes in the dataset
+        df = pd.DataFrame()
+        df["label"] = dataset.dataset._get_labels_of(dataset.indices)
+        df.index = self.indices
+        df = df.sort_index()
+
+        label_to_count = df["label"].value_counts()
+
+        weights = 1.0 / label_to_count[df["label"]]
+
+        self.weights = torch.DoubleTensor(weights.to_list())
+
+    def __iter__(self):
+        return (self.indices[i] for i in torch.multinomial(self.weights, self.num_samples, replacement=True))
+
+    def __len__(self):
+        return self.num_samples

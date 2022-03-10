@@ -36,6 +36,15 @@ def evaluation(gt_dir, pred_dir):
 
     return json.dumps(results)
 
+
+def eval_valid_dataset(gts, preds):
+    num_classes = 18
+
+    cls_report = classification_report(gts, preds, labels=np.arange(num_classes), output_dict=True, zero_division=0)
+    f1 = np.mean([cls_report[str(i)]['f1-score'] for i in range(num_classes)])
+    return f1
+
+
 #if __name__ == '__main__':
 #    gt_dir = os.environ.get('SM_GROUND_TRUTH_DIR')
 #    pred_dir = os.environ.get('SM_OUTPUT_DATA_DIR')
